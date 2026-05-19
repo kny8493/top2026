@@ -82,6 +82,49 @@ function makeCard(value, index, extraClasses = []) {
   return el;
 }
 
+/* ════════════════════════════════════════════════════════════════════
+   자동 진행 (정답 후 자동으로 다음 문제)
+   ════════════════════════════════════════════════════════════════════ */
+let _autoAdvTimer    = null;
+let _autoAdvInterval = null;
+
+function startAutoAdvance(callback, delay) {
+  stopAutoAdvance();
+  let remaining = Math.ceil(delay / 1000);
+
+  const update = () => {
+    document.querySelectorAll('.auto-next-label').forEach(el => {
+      el.textContent = `${remaining}초 후 자동으로 다음 문제`;
+    });
+  };
+
+  update();
+  _autoAdvInterval = setInterval(() => {
+    remaining = Math.max(0, remaining - 1);
+    update();
+  }, 1000);
+
+  _autoAdvTimer = setTimeout(() => {
+    stopAutoAdvance();
+    callback();
+  }, delay);
+}
+
+function stopAutoAdvance() {
+  clearTimeout(_autoAdvTimer);
+  clearInterval(_autoAdvInterval);
+  _autoAdvTimer    = null;
+  _autoAdvInterval = null;
+}
+
+function injectAutoNextLabel(actionsId) {
+  const el = document.getElementById(actionsId);
+  if (!el) return;
+  const lbl = document.createElement('div');
+  lbl.className = 'auto-next-label';
+  el.appendChild(lbl);
+}
+
 /** 콘페티 이펙트 */
 function showConfetti() {
   const colors = ['#6366f1','#8b5cf6','#10b981','#f59e0b','#ef4444','#3b82f6'];
@@ -101,6 +144,7 @@ function showConfetti() {
    내비게이션
    ════════════════════════════════════════════════════════════════════ */
 function showPage(name) {
+  stopAutoAdvance();
   document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
   document.querySelectorAll('.nav-link').forEach(a => {
     a.classList.toggle('active', a.dataset.page === name);
@@ -193,6 +237,7 @@ function stopDemoTimer() {
    정렬 실습
    ════════════════════════════════════════════════════════════════════ */
 function initSort() {
+  stopAutoAdvance();
   const algo  = document.getElementById('sort-algo-select').value;
   const level = parseInt(document.getElementById('sort-level-select').value);
 
@@ -346,6 +391,8 @@ function checkSort() {
       detail: `${moveCount}번의 이동으로 정렬을 완성했습니다.`,
       algoHint: `${AlgorithmInfo[algorithm].emoji} ${AlgorithmInfo[algorithm].name}으로 완벽하게 정렬했습니다!`
     });
+    injectAutoNextLabel('sort-result-actions');
+    startAutoAdvance(nextSortLevel, 2000);
   } else {
     const fb = getErrorFeedback(algorithm, cards);
     showResult('sort', false, {
@@ -416,6 +463,7 @@ function nextSortLevel() {
    탐색 실습
    ════════════════════════════════════════════════════════════════════ */
 function initSearch() {
+  stopAutoAdvance();
   stopSearchTimer();
   const algo  = document.getElementById('search-algo-select').value;
   const level = parseInt(document.getElementById('search-level-select').value);
@@ -506,6 +554,8 @@ function renderSearchStep(idx) {
       detail: step.description,
       algoHint: ''
     });
+    injectAutoNextLabel('search-result-actions');
+    startAutoAdvance(initSearch, 2000);
   }
 }
 
@@ -575,6 +625,7 @@ function stopSearchTimer() {
    심화 활동 — 정렬 후 이분 탐색
    ════════════════════════════════════════════════════════════════════ */
 function initAdvanced() {
+  stopAutoAdvance();
   stopAdvTimer();
   const algo  = document.getElementById('adv-sort-algo').value;
   App.adv.cards    = generateCards(LevelConfig[2].count);
@@ -726,6 +777,15 @@ function renderAdvSearchStep(idx) {
         ? `완벽합니다! ${target}을(를) 단 ${App.adv.searchStepIdx}번 비교로 찾았습니다!`
         : `탐색 범위를 모두 확인했지만 ${target}은(는) 없습니다.`;
     document.getElementById('adv-result-detail').textContent = step.description;
+    if (step.type === 'found') {
+      const retryBtn = document.getElementById('adv-retry-btn');
+      if (retryBtn) {
+        const lbl = document.createElement('div');
+        lbl.className = 'auto-next-label';
+        retryBtn.insertAdjacentElement('beforebegin', lbl);
+      }
+      startAutoAdvance(initAdvanced, 2000);
+    }
   }
 }
 
