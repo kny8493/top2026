@@ -112,7 +112,12 @@ function showPage(name) {
   stopDemoTimer();
   stopSearchTimer();
   stopAdvTimer();
-  document.querySelector('.nav-links').classList.remove('open');
+  const navLinks = document.querySelector('.nav-links');
+  if (navLinks) navLinks.classList.remove('open');
+
+  // 진도 페이지 렌더링 (progress.js에서 정의)
+  if (name === 'student' && typeof renderStudentPage === 'function') renderStudentPage();
+  if (name === 'teacher' && typeof renderTeacherPage === 'function') renderTeacherPage();
 }
 
 /* ════════════════════════════════════════════════════════════════════

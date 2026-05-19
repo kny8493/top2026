@@ -8,6 +8,35 @@
 </head>
 <body>
 
+<!-- ═══════ 로그인 화면 ═══════ -->
+<div id="login-screen">
+  <div class="login-card">
+    <div class="login-brand">🃏 AlgoCard</div>
+    <h2 class="login-title">학습 시스템 로그인</h2>
+    <p class="login-sub">반, 학번, 이름을 입력하여 로그인하세요</p>
+    <form id="login-form" novalidate>
+      <div class="form-field">
+        <label for="login-class">반</label>
+        <input type="number" id="login-class" placeholder="예: 1" min="1" max="99" autocomplete="off">
+      </div>
+      <div class="form-field">
+        <label for="login-id">학번</label>
+        <input type="text" id="login-id" placeholder="예: 20301" autocomplete="off">
+      </div>
+      <div class="form-field">
+        <label for="login-name">이름</label>
+        <input type="text" id="login-name" placeholder="이름 입력" autocomplete="off">
+      </div>
+      <div id="login-error" class="login-error" style="display:none;"></div>
+      <button type="submit" class="btn-primary btn-login-submit">로그인 →</button>
+    </form>
+  </div>
+  <footer class="app-footer login-footer">Copyright 김나영</footer>
+</div>
+
+<!-- ═══════ 앱 래퍼 (로그인 후 표시) ═══════ -->
+<div id="app-wrapper" style="display:none;">
+
 <!-- ═══════ 내비게이션 ═══════ -->
 <nav class="navbar">
   <div class="nav-brand">🃏 AlgoCard</div>
@@ -16,7 +45,13 @@
     <li><a href="#sort"     class="nav-link" data-page="sort">정렬 실습</a></li>
     <li><a href="#search"   class="nav-link" data-page="search">탐색 실습</a></li>
     <li><a href="#advanced" class="nav-link" data-page="advanced">심화 활동</a></li>
+    <li class="nav-student-only"><a href="#student" class="nav-link" data-page="student">📊 내 진도</a></li>
+    <li class="nav-teacher-only" style="display:none;"><a href="#teacher" class="nav-link" data-page="teacher">📊 학생 관리</a></li>
   </ul>
+  <div class="nav-right">
+    <span id="nav-user-info" class="nav-user-info"></span>
+    <button id="nav-logout" class="btn-logout">로그아웃</button>
+  </div>
   <button class="nav-toggle" aria-label="메뉴">☰</button>
 </nav>
 
@@ -324,11 +359,115 @@
 
   </section>
 
+  <!-- ═══════════════════════════════════════════════════
+       페이지 5: 학생 진도 관리
+       ═══════════════════════════════════════════════════ -->
+  <section id="page-student" class="page">
+
+    <!-- 학생 정보 + 진도 요약 바 -->
+    <div class="stu-header">
+      <div class="stu-info-group">
+        <span class="stu-icon">👤</span>
+        <span id="stu-info" class="stu-info-text"></span>
+      </div>
+      <div class="stu-summary">
+        <span class="stu-label">완료</span>
+        <strong id="stu-done" class="stu-done">0</strong>
+        <span class="stu-sep">/ 19</span>
+        <div class="progress-track stu-progress-track">
+          <div class="progress-fill" id="stu-bar-fill"></div>
+        </div>
+        <strong id="stu-pct" class="stu-pct">0%</strong>
+      </div>
+    </div>
+
+    <!-- 정렬 알고리즘 섹션 -->
+    <div class="prog-section">
+      <h3 class="prog-section-title">
+        🃏 정렬 알고리즘
+        <span class="prog-count-badge">12문제</span>
+      </h3>
+      <div class="prog-grid" id="sort-checklist"></div>
+    </div>
+
+    <!-- 탐색 알고리즘 섹션 -->
+    <div class="prog-section">
+      <h3 class="prog-section-title">
+        🔍 탐색 알고리즘
+        <span class="prog-count-badge">6문제</span>
+      </h3>
+      <div class="prog-grid" id="search-checklist"></div>
+    </div>
+
+    <!-- 심화 활동 섹션 -->
+    <div class="prog-section">
+      <h3 class="prog-section-title">
+        🏆 심화 활동
+        <span class="prog-count-badge">1문제</span>
+      </h3>
+      <div id="adv-checklist"></div>
+    </div>
+
+  </section>
+
+  <!-- ═══════════════════════════════════════════════════
+       페이지 6: 교사 관리
+       ═══════════════════════════════════════════════════ -->
+  <section id="page-teacher" class="page">
+
+    <div class="teacher-top">
+      <h2>📊 학생 진도 관리</h2>
+      <div class="teacher-filter-group">
+        <label for="class-filter">반 선택</label>
+        <select id="class-filter" class="teacher-class-select">
+          <option value="">전체 반</option>
+        </select>
+      </div>
+    </div>
+
+    <div class="teacher-table-wrap">
+      <table class="teacher-table">
+        <thead>
+          <tr>
+            <th rowspan="2">반</th>
+            <th rowspan="2">학번</th>
+            <th rowspan="2">이름</th>
+            <th rowspan="2">완료</th>
+            <th rowspan="2">전체</th>
+            <th rowspan="2">진도율</th>
+            <th colspan="3">버블 정렬</th>
+            <th colspan="3">선택 정렬</th>
+            <th colspan="3">삽입 정렬</th>
+            <th colspan="3">합병 정렬</th>
+            <th colspan="3">순차 탐색</th>
+            <th colspan="3">이분 탐색</th>
+            <th rowspan="2">심화</th>
+          </tr>
+          <tr>
+            <th>쉬움</th><th>보통</th><th>어려움</th>
+            <th>쉬움</th><th>보통</th><th>어려움</th>
+            <th>쉬움</th><th>보통</th><th>어려움</th>
+            <th>쉬움</th><th>보통</th><th>어려움</th>
+            <th>쉬움</th><th>보통</th><th>어려움</th>
+            <th>쉬움</th><th>보통</th><th>어려움</th>
+          </tr>
+        </thead>
+        <tbody id="teacher-tbody"></tbody>
+      </table>
+    </div>
+
+  </section>
+
 </main>
 
-<!-- 스크립트 로딩 (algorithms.js가 먼저 로드되어야 함) -->
+<footer class="app-footer">Copyright 김나영</footer>
+
+</div><!-- /#app-wrapper -->
+
+<!-- 스크립트 로딩 (algorithms.js → app.js → progress.js 순서 중요) -->
 <script src="js/algorithms.js"></script>
 <script src="js/app.js"></script>
+<script src="js/progress.js"></script>
 
 </body>
 </html>
