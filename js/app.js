@@ -331,6 +331,13 @@ function checkSort() {
   const { cards, algorithm, moveCount } = App.sort;
   if (isSortedArr(cards)) {
     showConfetti();
+    // 진도 자동 완료 (퀵 정렬은 진도 항목 없음)
+    if (typeof autoComplete === 'function') {
+      const diffMap = { 1: 'easy', 2: 'medium', 3: 'hard' };
+      const algoMap = { bubble: 'bubble', selection: 'selection', insertion: 'insertion' };
+      const key = algoMap[algorithm];
+      if (key) autoComplete('sort', key, diffMap[App.sort.level]);
+    }
     // 정렬 완료 표시
     document.getElementById('sort-cards').querySelectorAll('.card').forEach(c => c.classList.add('sorted'));
     showResult('sort', true, {
@@ -486,6 +493,12 @@ function renderSearchStep(idx) {
   if (step.type === 'found' || step.type === 'not-found') {
     App.search.done = true;
     stopSearchTimer();
+    // 진도 자동 완료 (탐색 완주 시 — found/not-found 모두 인정)
+    if (typeof autoComplete === 'function') {
+      const diffMap  = { 1: 'easy', 2: 'medium', 3: 'hard' };
+      const algoMap  = { sequential: 'linear', binary: 'binary' };
+      autoComplete('search', algoMap[App.search.algorithm], diffMap[App.search.level]);
+    }
     const success = step.type === 'found';
     showResult('search', success, {
       icon: success ? '🎉' : '🔍',
@@ -702,6 +715,8 @@ function renderAdvSearchStep(idx) {
 
   if (step.type === 'found' || step.type === 'not-found') {
     stopAdvTimer();
+    // 심화 진도 자동 완료 (이분 탐색 성공 시)
+    if (step.type === 'found' && typeof autoCompleteAdvanced === 'function') autoCompleteAdvanced();
     const resultEl = document.getElementById('adv-result');
     resultEl.style.display = 'block';
     resultEl.className = `result-panel ${step.type === 'found' ? 'success' : 'error'}`;

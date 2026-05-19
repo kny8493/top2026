@@ -4,9 +4,10 @@
  */
 
 /* ── 상수 ─────────────────────────────────────────────────────────── */
-const ADMIN_ID   = '000000';
-const ADMIN_NAME = '김나영';
-const TOTAL      = 19;
+const ADMIN_CLASS = '0';
+const ADMIN_ID    = '00000';
+const ADMIN_NAME  = '김나영';
+const TOTAL       = 19;
 
 const SORT_ALGOS   = ['bubble', 'selection', 'insertion', 'merge'];
 const SEARCH_ALGOS = ['linear', 'binary'];
@@ -78,7 +79,7 @@ function saveProgress(classNum, id, name, progress) {
 /* ── 인증 ──────────────────────────────────────────────────────────── */
 function doLogin(classNum, id, name) {
   if (!classNum || !id || !name) return null;
-  const isTeacher = id === ADMIN_ID && name === ADMIN_NAME;
+  const isTeacher = classNum === ADMIN_CLASS && id === ADMIN_ID && name === ADMIN_NAME;
   if (!isTeacher) upsertStudent(classNum, id, name);
   const session = { classNum, studentId: id, name, isTeacher };
   store.saveSession(session);
@@ -159,15 +160,9 @@ function renderChecklist(containerId, type, progress, session) {
       row.className = 'pc-item' + (progress[type][algo][diff] ? ' pc-done' : '');
 
       const cb = document.createElement('input');
-      cb.type    = 'checkbox';
-      cb.checked = progress[type][algo][diff];
-
-      cb.addEventListener('change', () => {
-        progress[type][algo][diff] = cb.checked;
-        row.className = 'pc-item' + (cb.checked ? ' pc-done' : '');
-        saveProgress(session.classNum, session.studentId, session.name, progress);
-        updateStuSummary(progress);
-      });
+      cb.type     = 'checkbox';
+      cb.checked  = progress[type][algo][diff];
+      cb.disabled = true; // 읽기 전용 — 정답 제출 시 자동 완료
 
       const badge = document.createElement('span');
       badge.className        = 'pc-diff-badge';
@@ -191,15 +186,9 @@ function renderAdvancedCheck(progress, session) {
   label.className = 'pc-item pc-advanced' + (progress.advanced ? ' pc-done' : '');
 
   const cb = document.createElement('input');
-  cb.type    = 'checkbox';
-  cb.checked = progress.advanced;
-
-  cb.addEventListener('change', () => {
-    progress.advanced = cb.checked;
-    label.className = 'pc-item pc-advanced' + (cb.checked ? ' pc-done' : '');
-    saveProgress(session.classNum, session.studentId, session.name, progress);
-    updateStuSummary(progress);
-  });
+  cb.type     = 'checkbox';
+  cb.checked  = progress.advanced;
+  cb.disabled = true; // 읽기 전용 — 심화 활동 완료 시 자동 완료
 
   const txt = document.createElement('span');
   txt.textContent = '🏆 심화 문제 완료';
@@ -289,6 +278,42 @@ function renderTeacherTable() {
 
     tbody.appendChild(tr);
   });
+}
+
+/* ── 자동 진도 완료 (app.js에서 호출) ─────────────────────────────── */
+
+/**
+ * 정렬/탐색 문제를 정답 처리할 때 호출.
+ * type: 'sort' | 'search'
+ * algoKey: 'bubble' | 'selection' | 'insertion' | 'merge' | 'linear' | 'binary'
+ * diffKey:  'easy' | 'medium' | 'hard'
+ */
+function autoComplete(type, algoKey, diffKey) {
+  const s = store.session();
+  if (!s || s.isTeacher) return;
+
+  const student = findStudent(s.classNum, s.studentId, s.name);
+  if (!student || student.progress[type][algoKey][diffKey]) return;
+
+  student.progress[type][algoKey][diffKey] = true;
+  saveProgress(s.classNum, s.studentId, s.name, student.progress);
+
+  // 진도 페이지가 열려 있으면 즉시 반영
+  if (typeof App !== 'undefined' && App.currentPage === 'student') renderStudentPage();
+}
+
+/** 심화 활동 탐색 성공 시 호출 */
+function autoCompleteAdvanced() {
+  const s = store.session();
+  if (!s || s.isTeacher) return;
+
+  const student = findStudent(s.classNum, s.studentId, s.name);
+  if (!student || student.progress.advanced) return;
+
+  student.progress.advanced = true;
+  saveProgress(s.classNum, s.studentId, s.name, student.progress);
+
+  if (typeof App !== 'undefined' && App.currentPage === 'student') renderStudentPage();
 }
 
 /* ── 로그인 오류 표시 ──────────────────────────────────────────────── */

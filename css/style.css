@@ -1010,8 +1010,8 @@ label  { font-weight: 500; }
 .pc-item:last-child { margin-bottom: 0; }
 
 .pc-item:hover {
-  border-color: var(--primary);
-  background: #f0f4ff;
+  border-color: var(--border); /* 편집 불가 — hover 강조 없음 */
+  background: #f8faff;
 }
 
 .pc-item.pc-done {
@@ -1019,12 +1019,17 @@ label  { font-weight: 500; }
   border-color: #86efac;
 }
 
+.pc-item {
+  cursor: default; /* 읽기 전용 */
+}
+
 .pc-item input[type="checkbox"] {
   width: 15px;
   height: 15px;
   accent-color: var(--success);
   flex-shrink: 0;
-  cursor: pointer;
+  cursor: default;
+  pointer-events: none; /* 클릭 차단 */
 }
 
 .pc-diff-badge {
