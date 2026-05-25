@@ -17,15 +17,19 @@
     <form id="login-form" novalidate>
       <div class="form-field">
         <label for="login-class">반</label>
-        <input type="number" id="login-class" placeholder="예: 1" min="1" max="99" autocomplete="off">
+        <select id="login-class" autocomplete="off">
+          <option value="">-- 반 선택 --</option>
+          <option value="5">5반</option>
+          <option value="6">6반</option>
+        </select>
       </div>
       <div class="form-field">
         <label for="login-id">학번</label>
-        <input type="text" id="login-id" placeholder="예: 20301" autocomplete="off">
+        <input type="text" id="login-id" placeholder="예: 10501" autocomplete="off" maxlength="10">
       </div>
       <div class="form-field">
         <label for="login-name">이름</label>
-        <input type="text" id="login-name" placeholder="이름 입력" autocomplete="off">
+        <input type="text" id="login-name" placeholder="예: 홍길동" autocomplete="off">
       </div>
       <div id="login-error" class="login-error" style="display:none;"></div>
       <button type="submit" class="btn-primary btn-login-submit">로그인 →</button>
@@ -178,6 +182,15 @@
       <button class="btn-check"     id="sort-check-btn">✅ 정답 확인</button>
       <button class="btn-hint"      id="sort-hint-btn">💡 힌트 보기</button>
       <button class="btn-secondary" id="sort-solution-btn">▶ 정답 애니메이션</button>
+    </div>
+
+    <!-- 교환 히스토리 로그 -->
+    <div class="swap-log-panel" id="swap-log-panel" style="display:none;">
+      <div class="swap-log-header">
+        🔄 교환 기록
+        <button class="swap-log-clear" onclick="clearSwapLog()">✕ 지우기</button>
+      </div>
+      <ol class="swap-log-list" id="swap-log-list"></ol>
     </div>
 
     <!-- 결과 패널 -->

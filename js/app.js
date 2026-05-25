@@ -23,9 +23,13 @@ const App = {
     level: 1,
     cards: [],
     original: [],
-    moveCount: 0,
-    dragSrcIdx: null,
-    touchSelected: null
+    compareCount: 0,     // ★ 비교 횟수 (핵심 지표)
+    swapCount: 0,        // 교환 횟수 (부가 정보)
+    steps: [],           // 알고리즘 단계 배열 (미리 계산)
+    stepIndex: 0,        // 현재 COMPARE 단계 인덱스
+    selected: null,      // 첫 번째 선택 카드 인덱스
+    solutionShown: false,  // 정답 애니메이션 시청 여부
+    solutionTimer: null    // 정답 애니메이션 타이머
   },
 
   search: {
@@ -35,6 +39,7 @@ const App = {
     target: null,
     steps: [],
     stepIndex: 0,
+    searchCount: 0,    // ★ 탐색(비교) 횟수
     timer: null,
     done: false
   },
@@ -72,13 +77,13 @@ function sortedness(arr) {
 }
 
 /** 카드 DOM 요소 생성 */
-function makeCard(value, index, extraClasses = []) {
+function makeCard(value, index, extraClasses = [], draggable = true) {
   const el = document.createElement('div');
   el.className = ['card', getCardColorClass(value), ...extraClasses].join(' ');
   el.dataset.index = index;
   el.dataset.value = value;
   el.textContent = value;
-  el.draggable = true;
+  el.draggable = draggable;
   return el;
 }
 
@@ -154,6 +159,7 @@ function showPage(name) {
   App.currentPage = name;
 
   stopDemoTimer();
+  stopSortSolutionTimer();
   stopSearchTimer();
   stopAdvTimer();
   const navLinks = document.querySelector('.nav-links');
@@ -225,6 +231,11 @@ function startDemoTimer() {
   }, App.demo.speed);
 }
 
+function stopSortSolutionTimer() {
+  clearInterval(App.sort.solutionTimer);
+  App.sort.solutionTimer = null;
+}
+
 function stopDemoTimer() {
   clearInterval(App.demo.timer);
   App.demo.timer = null;
@@ -238,16 +249,30 @@ function stopDemoTimer() {
    ════════════════════════════════════════════════════════════════════ */
 function initSort() {
   stopAutoAdvance();
+  stopSortSolutionTimer();
   const algo  = document.getElementById('sort-algo-select').value;
   const level = parseInt(document.getElementById('sort-level-select').value);
 
-  App.sort.algorithm    = algo;
-  App.sort.level        = level;
-  App.sort.cards        = generateCards(LevelConfig[level].count);
-  App.sort.original     = [...App.sort.cards];
-  App.sort.moveCount    = 0;
-  App.sort.dragSrcIdx   = null;
-  App.sort.touchSelected = null;
+  const cards = generateCards(LevelConfig[level].count);
+  const steps = AlgorithmInfo[algo].getSortSteps(cards);
+  const firstCompareIdx = steps.findIndex(s => s.type === ST.COMPARE);
+
+  App.sort.algorithm     = algo;
+  App.sort.level         = level;
+  App.sort.original      = [...cards];
+  App.sort.steps         = steps;
+  App.sort.compareCount  = 0;
+  App.sort.swapCount     = 0;
+  App.sort.selected      = null;
+  App.sort.solutionShown = false;
+
+  if (firstCompareIdx >= 0) {
+    App.sort.stepIndex = firstCompareIdx;
+    App.sort.cards     = [...steps[firstCompareIdx].array];
+  } else {
+    App.sort.stepIndex = 0;
+    App.sort.cards     = [...cards];
+  }
 
   const info = AlgorithmInfo[algo];
   document.getElementById('sort-algo-info').innerHTML =
@@ -256,165 +281,269 @@ function initSort() {
      <span class="algo-desc">${info.description}</span>`;
 
   hideResult('sort');
-  document.getElementById('sort-hint-text').textContent =
-    '카드를 드래그(PC) 또는 탭 두 번(모바일)으로 교환하여 오름차순 정렬하세요.';
-
+  clearSwapLog();
+  enableSortButtons();
+  updateSortStepInfo();
   renderSortCards();
 }
 
 function renderSortCards(highlightIdxs = []) {
-  const { cards, level, dragSrcIdx, touchSelected, moveCount } = App.sort;
+  const { cards, level, compareCount, swapCount, selected, steps, stepIndex } = App.sort;
   const container = document.getElementById('sort-cards');
   container.className = `cards-area level-${level}`;
   container.innerHTML = '';
 
   const lbl = document.createElement('div');
   lbl.className = 'cards-area-label';
-  lbl.textContent = `${LevelConfig[level].label} — 이동 횟수: ${moveCount}`;
+  lbl.textContent = `${LevelConfig[level].label} — 비교 횟수: ${compareCount}회, 교환 횟수: ${swapCount}회`;
   container.appendChild(lbl);
+
+  const sortedSet = new Set((steps[stepIndex] || {}).sorted || []);
 
   cards.forEach((val, i) => {
     const cls = [];
-    if (i === dragSrcIdx || i === touchSelected) cls.push('selected');
+    if (sortedSet.has(i))        cls.push('sorted');
+    if (i === selected)          cls.push('selected');
     if (highlightIdxs.includes(i)) cls.push('highlighted');
-    container.appendChild(makeCard(val, i, cls));
+    // draggable=false: 정렬 실습은 클릭 방식 사용
+    container.appendChild(makeCard(val, i, cls, false));
   });
 
   updateSortProgress();
 }
 
 function updateSortProgress() {
-  const pct    = sortedness(App.sort.cards);
-  const sorted = isSortedArr(App.sort.cards);
+  const { steps, compareCount } = App.sort;
+  const total   = steps.filter(s => s.type === ST.COMPARE).length;
+  const pct     = total > 0 ? Math.round((compareCount / total) * 100) : 0;
+  const isDone  = App.sort.steps[App.sort.stepIndex]?.type === ST.DONE;
   document.getElementById('sort-progress').style.width = pct + '%';
-  document.getElementById('sort-progress-text').textContent = sorted ? '✅ 정렬 완료!' : `진행도 ${pct}%`;
+  document.getElementById('sort-progress-text').textContent =
+    isDone ? '✅ 정렬 완료!' : `비교 진행도 ${pct}%`;
 }
 
-/* ── 정렬 실습: 드래그 앤 드롭 (컨테이너에 한 번만 등록) ────────── */
-function initSortDragDrop() {
-  const container = document.getElementById('sort-cards');
-
-  container.addEventListener('dragstart', e => {
+/* ── 정렬 실습: 클릭 비교 (이벤트 위임, 한 번만 등록) ────────────── */
+function initSortClickDelegation() {
+  document.getElementById('sort-cards').addEventListener('click', e => {
     const card = e.target.closest('.card');
     if (!card) return;
-    App.sort.dragSrcIdx = parseInt(card.dataset.index);
-    card.classList.add('dragging');
-    container.classList.add('drag-active');
-    e.dataTransfer.effectAllowed = 'move';
-  });
-
-  container.addEventListener('dragover', e => {
-    e.preventDefault();
-    const card = e.target.closest('.card');
-    if (!card) return;
-    container.querySelectorAll('.card.drag-over').forEach(c => c.classList.remove('drag-over'));
-    if (parseInt(card.dataset.index) !== App.sort.dragSrcIdx) card.classList.add('drag-over');
-  });
-
-  container.addEventListener('dragleave', e => {
-    const card = e.target.closest('.card');
-    if (card) card.classList.remove('drag-over');
-  });
-
-  container.addEventListener('drop', e => {
-    e.preventDefault();
-    const card = e.target.closest('.card');
-    if (!card || App.sort.dragSrcIdx === null) return;
-    const dst = parseInt(card.dataset.index);
-    if (dst !== App.sort.dragSrcIdx) swapSort(App.sort.dragSrcIdx, dst);
-    cleanupDragSort();
-  });
-
-  container.addEventListener('dragend', () => cleanupDragSort());
-
-  // 터치: 이벤트 위임
-  container.addEventListener('touchend', e => {
-    e.preventDefault();
-    const touch = e.changedTouches[0];
-    const el    = document.elementFromPoint(touch.clientX, touch.clientY);
-    const card  = el?.closest('.card');
-    if (!card) {
-      // 카드 외부 탭 → 선택 해제
-      App.sort.touchSelected = null;
-      renderSortCards();
-      return;
-    }
     const idx = parseInt(card.dataset.index);
-    const prev = App.sort.touchSelected;
-    if (prev === null) {
-      App.sort.touchSelected = idx;
-      renderSortCards();
-    } else if (prev === idx) {
-      App.sort.touchSelected = null;
-      renderSortCards();
-    } else {
-      swapSort(prev, idx);
-      App.sort.touchSelected = null;
-    }
-  }, { passive: false });
-}
-
-function cleanupDragSort() {
-  document.querySelectorAll('#sort-cards .card').forEach(c => {
-    c.classList.remove('dragging', 'drag-over');
+    if (isNaN(idx)) return;
+    handleSortCardClick(idx);
   });
-  document.getElementById('sort-cards').classList.remove('drag-active');
-  App.sort.dragSrcIdx = null;
 }
 
-function swapSort(i, j) {
-  [App.sort.cards[i], App.sort.cards[j]] = [App.sort.cards[j], App.sort.cards[i]];
-  App.sort.moveCount++;
-  hideResult('sort');
-  document.getElementById('sort-hint-text').textContent =
-    '계속 정렬하세요. 힌트가 필요하면 "힌트 보기" 버튼을 클릭하세요.';
-  renderSortCards();
-}
+/** 카드 클릭 처리: 두 번 클릭으로 비교 쌍 선택 */
+function handleSortCardClick(clickedIdx) {
+  // 정답 애니메이션을 시청한 경우 클릭 비활성화
+  if (App.sort.solutionShown) return;
 
-/* ── 정렬 실습: 정답 확인 ────────────────────────────────────────── */
-function checkSort() {
-  const { cards, algorithm, moveCount } = App.sort;
-  if (isSortedArr(cards)) {
-    showConfetti();
-    // 진도 자동 완료 (퀵 정렬은 진도 항목 없음)
-    if (typeof autoComplete === 'function') {
-      const diffMap = { 1: 'easy', 2: 'medium', 3: 'hard' };
-      const algoMap = { bubble: 'bubble', selection: 'selection', insertion: 'insertion' };
-      const key = algoMap[algorithm];
-      if (key) autoComplete('sort', key, diffMap[App.sort.level]);
-    }
-    // 정렬 완료 표시
-    document.getElementById('sort-cards').querySelectorAll('.card').forEach(c => c.classList.add('sorted'));
-    showResult('sort', true, {
-      icon: '🎉',
-      message: '정답입니다! 훌륭해요!',
-      detail: `${moveCount}번의 이동으로 정렬을 완성했습니다.`,
-      algoHint: `${AlgorithmInfo[algorithm].emoji} ${AlgorithmInfo[algorithm].name}으로 완벽하게 정렬했습니다!`
-    });
-    injectAutoNextLabel('sort-result-actions');
-    startAutoAdvance(nextSortLevel, 2000);
+  const { steps, stepIndex, selected } = App.sort;
+  const step = steps[stepIndex];
+  if (!step || step.type !== ST.COMPARE) return;
+
+  if (selected === null) {
+    App.sort.selected = clickedIdx;
+    renderSortCards();
+    return;
+  }
+
+  const firstIdx = App.sort.selected;
+  App.sort.selected = null;
+
+  if (firstIdx === clickedIdx) {
+    renderSortCards();
+    return;
+  }
+
+  const [a, b] = step.comparing;
+  const correct = (firstIdx === a && clickedIdx === b) ||
+                  (firstIdx === b && clickedIdx === a);
+
+  if (correct) {
+    App.sort.compareCount++;
+    advanceSortAfterCorrectCompare();
   } else {
-    const fb = getErrorFeedback(algorithm, cards);
-    showResult('sort', false, {
-      icon: '❌',
-      message: fb.summary,
-      detail: `${fb.detail}`,
-      algoHint: fb.algoHint
-    });
+    alert('다시 시도해 보세요');
+    renderSortCards();
   }
 }
 
-/* ── 정렬 실습: 힌트 ─────────────────────────────────────────────── */
+/** 교환 로그에 항목 추가 */
+function addSwapLog(step, swapNum) {
+  const panel = document.getElementById('swap-log-panel');
+  const list  = document.getElementById('swap-log-list');
+  if (!panel || !list) return;
+
+  panel.style.display = '';
+
+  const [i, j] = step.comparing;
+  // step.array는 교환 후 배열 상태
+  const valAtI = step.array[i];
+  const valAtJ = step.array[j];
+
+  // 교환 후 배열을 렌더링: 교환된 위치는 강조
+  const arrHTML = step.array.map((v, idx) => {
+    if (idx === i || idx === j) {
+      return `<span class="swap-log-highlight">${v}</span>`;
+    }
+    return `<span class="swap-log-normal">${v}</span>`;
+  }).join(' ');
+
+  const li = document.createElement('li');
+  li.className = 'swap-log-item';
+  li.innerHTML =
+    `<div class="swap-log-desc">` +
+      `<strong>${swapNum}번째 교환</strong> — ` +
+      `<span class="swap-vals">${valAtJ}</span>(${i+1}번 자리) ↔ ` +
+      `<span class="swap-vals">${valAtI}</span>(${j+1}번 자리)` +
+      `<span class="swap-log-algo-desc">${step.description || ''}</span>` +
+    `</div>` +
+    `<div class="swap-log-array">배열: [ ${arrHTML} ]</div>`;
+
+  list.appendChild(li);
+  list.scrollTop = list.scrollHeight;
+}
+
+/** 교환 로그 초기화 */
+function clearSwapLog() {
+  document.getElementById('swap-log-list').innerHTML = '';
+  document.getElementById('swap-log-panel').style.display = 'none';
+}
+
+/** 정답 비교 후: SWAP·기타 중간 단계 자동 처리 → 다음 COMPARE 또는 완료 */
+function advanceSortAfterCorrectCompare() {
+  const steps = App.sort.steps;
+  let idx = App.sort.stepIndex + 1;
+
+  while (idx < steps.length) {
+    const type = steps[idx].type;
+    if (type === ST.SWAP) {
+      App.sort.swapCount++;
+      addSwapLog(steps[idx], App.sort.swapCount);
+      idx++;
+      continue;
+    }
+    if (type === ST.COMPARE || type === ST.DONE) break;
+    idx++;
+  }
+
+  if (idx >= steps.length || steps[idx].type === ST.DONE) {
+    const last = steps[steps.length - 1];
+    App.sort.cards     = [...last.array];
+    App.sort.stepIndex = steps.length - 1;
+    renderSortCards();
+    handleSortComplete();
+    return;
+  }
+
+  App.sort.stepIndex = idx;
+  App.sort.cards     = [...steps[idx].array];
+  renderSortCards();
+  updateSortStepInfo();
+}
+
+/** 힌트 텍스트: 알고리즘 단계 설명 (정답 쌍은 공개하지 않음) */
+function updateSortStepInfo() {
+  const { algorithm, steps, stepIndex, compareCount, swapCount } = App.sort;
+  const step = steps[stepIndex];
+  if (!step) return;
+
+  const guide = {
+    bubble:    '버블 정렬: 현재 패스에서 비교해야 할 인접한 두 카드를 클릭하세요.',
+    selection: '선택 정렬: 미정렬 구간에서 비교할 두 카드(현재 후보와 다음 원소)를 클릭하세요.',
+    insertion: '삽입 정렬: 삽입할 카드와 비교 대상 카드를 클릭하세요.'
+  };
+  document.getElementById('sort-hint-text').textContent =
+    `${guide[algorithm] || '비교할 두 카드를 클릭하세요.'}  (비교 ${compareCount}회 / 교환 ${swapCount}회)`;
+}
+
+/** 정렬 완료 처리 (자동 타이머 없음 — 학생이 직접 다음 행동 선택) */
+function handleSortComplete() {
+  const { algorithm, compareCount, swapCount, level } = App.sort;
+  showConfetti();
+
+  document.getElementById('sort-cards').querySelectorAll('.card')
+    .forEach(c => c.classList.add('sorted'));
+
+  if (typeof autoComplete === 'function') {
+    const diffMap = { 1: 'easy', 2: 'medium', 3: 'hard' };
+    const algoMap = { bubble: 'bubble', selection: 'selection', insertion: 'insertion' };
+    const key = algoMap[algorithm];
+    if (key) autoComplete('sort', key, diffMap[level]);
+  }
+
+  showResult('sort', true, {
+    icon:      '🎉',
+    message:   '정렬 완료! 훌륭해요!',
+    detail:    `비교 횟수: ${compareCount}회, 교환 횟수: ${swapCount}회로 정렬을 완성했습니다!`,
+    algoHint:  `${AlgorithmInfo[algorithm].emoji} ${AlgorithmInfo[algorithm].name}의 모든 비교 단계를 완주했습니다!`
+  });
+}
+
+/* ── 정렬 실습: 진행 상태 확인 (완료 처리 없이 현황만 표시) ────── */
+function checkSort() {
+  const { compareCount, swapCount, steps } = App.sort;
+  const total = steps.filter(s => s.type === ST.COMPARE).length;
+  document.getElementById('sort-hint-text').textContent =
+    `현재까지 비교: ${compareCount}회 / 총 ${total}회, 교환: ${swapCount}회. 두 카드를 클릭해 비교를 계속하세요!`;
+}
+
+/* ── 정렬 실습: 같은 카드로 처음부터 다시 ───────────────────────── */
+function restartSort() {
+  stopSortSolutionTimer();
+  const algo  = App.sort.algorithm;
+  const cards = [...App.sort.original];
+  const steps = AlgorithmInfo[algo].getSortSteps(cards);
+  const firstCompareIdx = steps.findIndex(s => s.type === ST.COMPARE);
+
+  App.sort.steps         = steps;
+  App.sort.compareCount  = 0;
+  App.sort.swapCount     = 0;
+  App.sort.selected      = null;
+  App.sort.solutionShown = false;
+  App.sort.stepIndex     = firstCompareIdx >= 0 ? firstCompareIdx : 0;
+  App.sort.cards         = [...steps[App.sort.stepIndex].array];
+
+  hideResult('sort');
+  clearSwapLog();
+  enableSortButtons();
+  updateSortStepInfo();
+  renderSortCards();
+}
+
+/** 정렬 실습 버튼 활성화/비활성화 헬퍼 */
+function enableSortButtons() {
+  document.getElementById('sort-check-btn').disabled    = false;
+  document.getElementById('sort-hint-btn').disabled     = false;
+  document.getElementById('sort-solution-btn').disabled = false;
+}
+function disableSortButtons() {
+  document.getElementById('sort-check-btn').disabled    = true;
+  document.getElementById('sort-hint-btn').disabled     = true;
+  document.getElementById('sort-solution-btn').disabled = true;
+}
+
+/* ── 정렬 실습: 힌트 (클릭해야 할 두 카드 위치 공개) ─────────────── */
 function showSortHint() {
-  const hint = getNextStepHint(App.sort.algorithm, App.sort.cards);
-  document.getElementById('sort-hint-text').textContent = hint.message;
-  renderSortCards(hint.highlightIndices);
-  // 3초 후 하이라이트 제거
+  const { steps, stepIndex, compareCount, swapCount } = App.sort;
+  const step = steps[stepIndex];
+  if (!step || step.type !== ST.COMPARE) return;
+
+  const [a, b] = step.comparing;
+  document.getElementById('sort-hint-text').textContent =
+    `💡 힌트: ${step.description}  →  ${a + 1}번째 카드와 ${b + 1}번째 카드를 클릭하세요! (비교 ${compareCount}회 / 교환 ${swapCount}회)`;
+
+  renderSortCards([a, b]);
   setTimeout(() => renderSortCards(), 3000);
 }
 
 /* ── 정렬 실습: 정답 애니메이션 ──────────────────────────────────── */
 function showSortSolution() {
+  // 애니메이션 시작 → 정답 확인·힌트 버튼 비활성화
+  App.sort.solutionShown = true;
+  disableSortButtons();
+
   const steps = AlgorithmInfo[App.sort.algorithm].getSortSteps(App.sort.original);
   let idx = 0;
   const container = document.getElementById('sort-cards');
@@ -422,12 +551,28 @@ function showSortSolution() {
   hintEl.textContent = '정답 애니메이션 실행 중... 잘 관찰하세요!';
   hideResult('sort');
 
-  const timer = setInterval(() => {
+  App.sort.solutionTimer = setInterval(() => {
     if (idx >= steps.length) {
-      clearInterval(timer);
+      clearInterval(App.sort.solutionTimer);
+      App.sort.solutionTimer = null;
       App.sort.cards = asSorted(App.sort.original);
       renderSortCards();
-      hintEl.textContent = '정렬 완료! 다시 드래그하여 직접 연습해보세요.';
+      // 애니메이션 완료 후: 정답 확인·힌트 버튼은 여전히 비활성, 안내만 표시
+      hintEl.textContent = '정답 애니메이션을 시청했습니다. 직접 풀려면 "↺ 처음부터 다시" 또는 "새 문제"를 선택하세요.';
+      showResult('sort', false, {
+        icon:     '👀',
+        message:  '정답 애니메이션을 시청했습니다.',
+        detail:   '직접 단계를 클릭해서 풀어야 진도가 인정됩니다!',
+        algoHint: ''
+      });
+      // 결과 패널 버튼을 처음부터 다시 / 새 문제로 교체
+      const actions = document.getElementById('sort-result-actions');
+      if (actions) {
+        actions.innerHTML = `
+          <button class="btn-hint"      onclick="restartSort()">↺ 처음부터 다시 (직접 풀기)</button>
+          <button class="btn-secondary" onclick="initSort()">새 문제</button>
+        `;
+      }
       return;
     }
     const step = steps[idx];
@@ -449,7 +594,7 @@ function showSortSolution() {
     });
     hintEl.textContent = step.description || '';
     idx++;
-  }, 550);
+  }, 2000);
 }
 
 /* ── 결과 다음 단계 ─────────────────────────────────────────────── */
@@ -489,6 +634,7 @@ function initSearch() {
     target,
     steps: AlgorithmInfo[algo].getSearchSteps(cards, target),
     stepIndex: 0,
+    searchCount: 0,
     timer: null,
     done: false
   };
@@ -536,7 +682,8 @@ function renderSearchStep(idx) {
     renderBinaryPointers(step, container);
   }
 
-  document.getElementById('search-step-info').textContent = step.description || '';
+  document.getElementById('search-step-info').textContent =
+    `${step.description || ''}   [탐색 횟수: ${App.search.searchCount}회]`;
 
   if (step.type === 'found' || step.type === 'not-found') {
     App.search.done = true;
@@ -583,27 +730,71 @@ function initSearchClickDelegation() {
     const card = e.target.closest('.card');
     if (!card) return;
     const clickedIdx = parseInt(card.dataset.index);
-    const nextIdx    = App.search.stepIndex + 1;
-    if (nextIdx >= App.search.steps.length) return;
 
-    const nextStep = App.search.steps[nextIdx];
-    const hintEl   = document.getElementById('search-hint-text');
+    const { algorithm, steps, stepIndex } = App.search;
+    const nextIdx = stepIndex + 1;
+    if (nextIdx >= steps.length) return;
 
-    if (App.search.algorithm === 'sequential') {
-      if (clickedIdx === nextStep.current) {
+    const nextStep = steps[nextIdx];
+
+    if (algorithm === 'sequential') {
+      // 순차 탐색: 다음 SEARCHING 단계의 current 위치를 클릭해야 함
+      if (nextStep.type === ST.SEARCHING && clickedIdx === nextStep.current) {
+        App.search.searchCount++;
         renderSearchStep(nextIdx);
+        autoAdvanceSearchPost(nextIdx);   // FOUND/NOT_FOUND 자동 진행
       } else {
-        hintEl.textContent = `❌ 순차 탐색은 ${nextStep.current + 1}번째 카드(왼쪽부터 차례로)를 확인해야 합니다!`;
+        alert('다시 시도해 보세요');
       }
     } else {
-      // 이분 탐색: 다음 스텝이 searching/eliminate 타입일 때만 mid 클릭 필요
-      if (nextStep.mid >= 0 && clickedIdx === nextStep.mid) {
+      // 이분 탐색: 다음 SEARCHING 단계의 mid 위치를 클릭해야 함
+      if (nextStep.type === ST.SEARCHING && nextStep.mid >= 0 && clickedIdx === nextStep.mid) {
+        App.search.searchCount++;
         renderSearchStep(nextIdx);
-      } else if (nextStep.mid >= 0) {
-        hintEl.textContent = `❌ 이분 탐색: 현재 범위 [${nextStep.low + 1}~${nextStep.high + 1}]의 중간 카드(${nextStep.mid + 1}번째)를 클릭하세요!`;
+        autoAdvanceBinaryPost(nextIdx);   // ELIMINATE/FOUND/NOT_FOUND 자동 진행
+      } else {
+        alert('다시 시도해 보세요');
       }
     }
   });
+}
+
+/** 순차 탐색: SEARCHING 렌더 후 FOUND/NOT_FOUND 자동 처리 */
+function autoAdvanceSearchPost(searchingIdx) {
+  const { steps } = App.search;
+  const next = searchingIdx + 1;
+  if (next >= steps.length) return;
+  const type = steps[next].type;
+  if (type === ST.FOUND || type === ST.NOT_FOUND) {
+    renderSearchStep(next);
+  }
+}
+
+/** 이분 탐색: SEARCHING 렌더 후 ELIMINATE → (FOUND|NOT_FOUND) 자동 처리
+ *  학생은 SEARCHING 단계(mid 클릭)만 수행, 나머지는 자동으로 보여줌 */
+function autoAdvanceBinaryPost(searchingIdx) {
+  const { steps } = App.search;
+  const next = searchingIdx + 1;
+  if (next >= steps.length) return;
+
+  const nextType = steps[next].type;
+
+  if (nextType === ST.FOUND || nextType === ST.NOT_FOUND) {
+    // 바로 결과
+    renderSearchStep(next);
+    return;
+  }
+
+  if (nextType === ST.ELIMINATE) {
+    // 제거 범위 보여주기 (자동)
+    renderSearchStep(next);
+    // ELIMINATE 다음이 NOT_FOUND면 추가 자동 진행
+    const afterElim = next + 1;
+    if (afterElim < steps.length && steps[afterElim].type === ST.NOT_FOUND) {
+      renderSearchStep(afterElim);
+    }
+    // 다음이 SEARCHING이면 멈추고 학생 클릭 대기
+  }
 }
 
 function startAutoSearch() {
@@ -836,6 +1027,7 @@ function showResult(mode, success, { icon, message, detail, algoHint }) {
   if (mode === 'sort' && success) {
     actions.innerHTML = `
       <button class="btn-primary"   onclick="nextSortLevel()">다음 단계 →</button>
+      <button class="btn-hint"      onclick="restartSort()">↺ 처음부터 다시</button>
       <button class="btn-secondary" onclick="initSort()">새 문제</button>
     `;
   } else if (mode === 'sort') {
@@ -897,14 +1089,17 @@ function bindEvents() {
   document.getElementById('search-new-btn').addEventListener('click', initSearch);
   document.getElementById('search-auto-btn').addEventListener('click', startAutoSearch);
   document.getElementById('search-hint-btn').addEventListener('click', () => {
-    const { algorithm, stepIndex, steps } = App.search;
-    const nextIdx = stepIndex + 1;
+    const { algorithm, stepIndex, steps, searchCount } = App.search;
+    // ELIMINATE 단계를 건너뛰고 다음 SEARCHING 단계를 찾음
+    let nextIdx = stepIndex + 1;
+    while (nextIdx < steps.length && steps[nextIdx].type === ST.ELIMINATE) nextIdx++;
     if (nextIdx >= steps.length) return;
     const ns = steps[nextIdx];
+    if (ns.type !== ST.SEARCHING) return;
     const hintEl = document.getElementById('search-hint-text');
     hintEl.textContent = algorithm === 'sequential'
-      ? `💡 순차 탐색: ${ns.current + 1}번째 카드를 클릭하세요.`
-      : `💡 이분 탐색: 범위 [${ns.low + 1}~${ns.high + 1}]의 중간 카드(${ns.mid + 1}번째)를 클릭하세요.`;
+      ? `💡 순차 탐색: ${ns.current + 1}번째 카드를 클릭하세요. [탐색 횟수: ${searchCount}회]`
+      : `💡 이분 탐색: 범위 [${ns.low + 1}~${ns.high + 1}]의 중간 카드(${ns.mid + 1}번째)를 클릭하세요. [탐색 횟수: ${searchCount}회]`;
   });
 
   // 심화 활동
@@ -933,8 +1128,8 @@ function initApp() {
   initSearch();
   initAdvanced();
 
-  // 드래그 앤 드롭 / 클릭 이벤트 (단 한 번만 등록)
-  initSortDragDrop();
+  // 정렬 실습: 클릭 비교 / 탐색 실습: 클릭 탐색 / 심화: 드래그 앤 드롭 (단 한 번만 등록)
+  initSortClickDelegation();
   initSearchClickDelegation();
   initAdvDragDrop();
 
