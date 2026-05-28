@@ -295,7 +295,8 @@ function renderSortCards(highlightIdxs = []) {
 
   const lbl = document.createElement('div');
   lbl.className = 'cards-area-label';
-  lbl.textContent = `${LevelConfig[level].label} — 비교 횟수: ${compareCount}회, 교환 횟수: ${swapCount}회`;
+  const swapLabel = App.sort.algorithm === 'insertion' ? '이동' : '교환';
+  lbl.textContent = `${LevelConfig[level].label} — 비교 횟수: ${compareCount}회, ${swapLabel} 횟수: ${swapCount}회`;
   container.appendChild(lbl);
 
   const sortedSet = new Set((steps[stepIndex] || {}).sorted || []);
@@ -377,14 +378,11 @@ function addSwapLog(step, swapNum) {
 
   panel.style.display = '';
 
-  const [i, j] = step.comparing;
-  // step.array는 교환 후 배열 상태
-  const valAtI = step.array[i];
-  const valAtJ = step.array[j];
+  const [srcIdx, dstIdx] = step.comparing;
 
-  // 교환 후 배열을 렌더링: 교환된 위치는 강조
+  // 배열 렌더링: 변경된 위치 강조
   const arrHTML = step.array.map((v, idx) => {
-    if (idx === i || idx === j) {
+    if (idx === srcIdx || idx === dstIdx) {
       return `<span class="swap-log-highlight">${v}</span>`;
     }
     return `<span class="swap-log-normal">${v}</span>`;
@@ -392,14 +390,43 @@ function addSwapLog(step, swapNum) {
 
   const li = document.createElement('li');
   li.className = 'swap-log-item';
-  li.innerHTML =
-    `<div class="swap-log-desc">` +
-      `<strong>${swapNum}번째 교환</strong> — ` +
-      `<span class="swap-vals">${valAtJ}</span>(${i+1}번 자리) ↔ ` +
-      `<span class="swap-vals">${valAtI}</span>(${j+1}번 자리)` +
-      `<span class="swap-log-algo-desc">${step.description || ''}</span>` +
-    `</div>` +
-    `<div class="swap-log-array">배열: [ ${arrHTML} ]</div>`;
+
+  if (step.key !== undefined) {
+    // 삽입 정렬: 한 칸 오른쪽 이동 (shift)
+    // step.array는 내부 상태라 srcIdx·dstIdx 양쪽에 같은 값이 중복됨.
+    // srcIdx 자리에 key를 표시해서 논리적 배열 상태로 보여줌.
+    const shiftedVal = step.array[dstIdx];
+    const displayArr = step.array.map((v, idx) => {
+      if (idx === srcIdx) return step.key; // 빈 자리(gap)에 key 표시
+      return v;
+    });
+    const insertArrHTML = displayArr.map((v, idx) => {
+      if (idx === srcIdx) return `<span class="swap-log-highlight">${v}</span>`;
+      if (idx === dstIdx) return `<span class="swap-log-highlight">${v}</span>`;
+      return `<span class="swap-log-normal">${v}</span>`;
+    }).join(' ');
+
+    li.innerHTML =
+      `<div class="swap-log-desc">` +
+        `<strong>${swapNum}번째 이동</strong> — ` +
+        `<span class="swap-vals">${shiftedVal}</span>이(가) ` +
+        `${srcIdx + 1}번 자리 → ${dstIdx + 1}번 자리로 이동` +
+      `</div>` +
+      `<div class="swap-log-array">배열: [ ${insertArrHTML} ]</div>`;
+  } else {
+    // 버블·선택 정렬: 두 값이 실제로 교환됨
+    // step.array는 교환 후 상태이므로, 교환 전 자리를 보여주려면 값을 교차해서 표시
+    const valAtSrc = step.array[srcIdx];
+    const valAtDst = step.array[dstIdx];
+    li.innerHTML =
+      `<div class="swap-log-desc">` +
+        `<strong>${swapNum}번째 교환</strong> — ` +
+        `<span class="swap-vals">${valAtDst}</span>(${srcIdx + 1}번 자리) ↔ ` +
+        `<span class="swap-vals">${valAtSrc}</span>(${dstIdx + 1}번 자리)` +
+        `<span class="swap-log-algo-desc">${step.description || ''}</span>` +
+      `</div>` +
+      `<div class="swap-log-array">배열: [ ${arrHTML} ]</div>`;
+  }
 
   list.appendChild(li);
   list.scrollTop = list.scrollHeight;
@@ -433,6 +460,7 @@ function advanceSortAfterCorrectCompare() {
     App.sort.cards     = [...last.array];
     App.sort.stepIndex = steps.length - 1;
     renderSortCards();
+    updateSortStepInfo();   // 마지막 비교 후에도 힌트 텍스트 카운트 업데이트
     handleSortComplete();
     return;
   }
@@ -449,13 +477,21 @@ function updateSortStepInfo() {
   const step = steps[stepIndex];
   if (!step) return;
 
+  const swapLbl = algorithm === 'insertion' ? '이동' : '교환';
+
+  if (step.type === ST.DONE) {
+    document.getElementById('sort-hint-text').textContent =
+      `모든 비교 완료!  (총 비교 ${compareCount}회 / ${swapLbl} ${swapCount}회)`;
+    return;
+  }
+
   const guide = {
     bubble:    '버블 정렬: 현재 패스에서 비교해야 할 인접한 두 카드를 클릭하세요.',
     selection: '선택 정렬: 미정렬 구간에서 비교할 두 카드(현재 후보와 다음 원소)를 클릭하세요.',
     insertion: '삽입 정렬: 삽입할 카드와 비교 대상 카드를 클릭하세요.'
   };
   document.getElementById('sort-hint-text').textContent =
-    `${guide[algorithm] || '비교할 두 카드를 클릭하세요.'}  (비교 ${compareCount}회 / 교환 ${swapCount}회)`;
+    `${guide[algorithm] || '비교할 두 카드를 클릭하세요.'}  (비교 ${compareCount}회 / ${swapLbl} ${swapCount}회)`;
 }
 
 /** 정렬 완료 처리 (자동 타이머 없음 — 학생이 직접 다음 행동 선택) */
@@ -476,7 +512,7 @@ function handleSortComplete() {
   showResult('sort', true, {
     icon:      '🎉',
     message:   '정렬 완료! 훌륭해요!',
-    detail:    `비교 횟수: ${compareCount}회, 교환 횟수: ${swapCount}회로 정렬을 완성했습니다!`,
+    detail:    `비교 횟수: ${compareCount}회, ${algorithm === 'insertion' ? '이동' : '교환'} 횟수: ${swapCount}회로 정렬을 완성했습니다!`,
     algoHint:  `${AlgorithmInfo[algorithm].emoji} ${AlgorithmInfo[algorithm].name}의 모든 비교 단계를 완주했습니다!`
   });
 }
@@ -532,7 +568,7 @@ function showSortHint() {
 
   const [a, b] = step.comparing;
   document.getElementById('sort-hint-text').textContent =
-    `💡 힌트: ${step.description}  →  ${a + 1}번째 카드와 ${b + 1}번째 카드를 클릭하세요! (비교 ${compareCount}회 / 교환 ${swapCount}회)`;
+    `💡 힌트: ${step.description}  →  ${a + 1}번째 카드와 ${b + 1}번째 카드를 클릭하세요! (비교 ${compareCount}회 / ${App.sort.algorithm === 'insertion' ? '이동' : '교환'} ${swapCount}회)`;
 
   renderSortCards([a, b]);
   setTimeout(() => renderSortCards(), 3000);

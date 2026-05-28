@@ -65,8 +65,6 @@ function bubbleSortSteps(arr) {
   steps.push({ type: ST.START, array: copyArr(a), comparing: [], sorted: [], description: '버블 정렬 시작! 왼쪽부터 인접한 두 카드를 비교합니다.' });
 
   for (let pass = 0; pass < n - 1; pass++) {
-    let swapped = false;
-
     for (let j = 0; j < n - 1 - pass; j++) {
       steps.push({
         type: ST.COMPARE,
@@ -78,7 +76,6 @@ function bubbleSortSteps(arr) {
 
       if (a[j] > a[j + 1]) {
         [a[j], a[j + 1]] = [a[j + 1], a[j]];
-        swapped = true;
         steps.push({
           type: ST.SWAP,
           array: copyArr(a),
@@ -98,8 +95,6 @@ function bubbleSortSteps(arr) {
       newlySorted: n - 1 - pass,
       description: `패스 ${pass + 1} 완료 — ${a[n - 1 - pass]}이(가) 올바른 위치에 정착!`
     });
-
-    if (!swapped) break; // 최적화: 더 이상 교환 없으면 종료
   }
 
   // 아직 sorted에 없는 인덱스 모두 추가
@@ -206,25 +201,36 @@ function insertionSortSteps(arr) {
     });
 
     let j = i - 1;
-    while (j >= 0 && a[j] > key) {
+    while (j >= 0) {
+      // Always show the comparison — even when no shift is needed.
+      // Show the key at position j+1 so it stays visible (avoids duplicate-value display).
+      const displayArr = copyArr(a);
+      displayArr[j + 1] = key;
+      const needsShift = a[j] > key;
       steps.push({
         type: ST.COMPARE,
-        array: copyArr(a),
+        array: displayArr,
         comparing: [j, j + 1],
         sorted: [...sorted],
-        description: `${a[j]}이(가) ${key}보다 크므로 오른쪽으로 밉니다.`
+        description: needsShift
+          ? `${a[j]}이(가) ${key}보다 크므로 오른쪽으로 밉니다.`
+          : `${a[j]}이(가) ${key}보다 작거나 같으므로 이 자리에 삽입합니다.`
       });
 
-      a[j + 1] = a[j];
-      steps.push({
-        type: ST.SWAP,
-        array: copyArr(a),
-        comparing: [j, j + 1],
-        sorted: [...sorted],
-        description: `${a[j + 1]}을(를) 한 칸 오른쪽으로 이동`
-      });
-
-      j--;
+      if (needsShift) {
+        a[j + 1] = a[j];
+        steps.push({
+          type: ST.SWAP,
+          array: copyArr(a),
+          comparing: [j, j + 1],
+          sorted: [...sorted],
+          key,
+          description: `${a[j + 1]}을(를) ${j + 2}번 자리로 이동 (${key} 삽입 중)`
+        });
+        j--;
+      } else {
+        break;
+      }
     }
 
     a[j + 1] = key;
