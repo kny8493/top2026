@@ -200,40 +200,40 @@ function insertionSortSteps(arr) {
       description: `${key} 카드 선택 — 앞의 정렬된 구간에서 올바른 자리를 찾습니다.`
     });
 
+    let insertPos = i;   // key가 들어갈 자리 (이동할수록 왼쪽으로)
     let j = i - 1;
     while (j >= 0) {
-      // Always show the comparison — even when no shift is needed.
-      // Show the key at position j+1 so it stays visible (avoids duplicate-value display).
       const displayArr = copyArr(a);
-      displayArr[j + 1] = key;
+      displayArr[insertPos] = key;   // key를 현재 gap 위치에 표시
       const needsShift = a[j] > key;
       steps.push({
         type: ST.COMPARE,
         array: displayArr,
-        comparing: [j, j + 1],
+        comparing: [j, insertPos],
         sorted: [...sorted],
         description: needsShift
           ? `${a[j]}이(가) ${key}보다 크므로 오른쪽으로 밉니다.`
-          : `${a[j]}이(가) ${key}보다 작거나 같으므로 이 자리에 삽입합니다.`
+          : `${a[j]}이(가) ${key}보다 작거나 같습니다. 계속 비교합니다.`
       });
 
       if (needsShift) {
-        a[j + 1] = a[j];
+        a[insertPos] = a[j];          // a[j]를 gap 위치로 이동
+        const prevInsertPos = insertPos;
+        insertPos = j;                // 새로운 gap은 j
         steps.push({
           type: ST.SWAP,
           array: copyArr(a),
-          comparing: [j, j + 1],
+          comparing: [j, prevInsertPos],
           sorted: [...sorted],
           key,
-          description: `${a[j + 1]}을(를) ${j + 2}번 자리로 이동 (${key} 삽입 중)`
+          description: `${a[prevInsertPos]}을(를) ${prevInsertPos + 1}번 자리로 이동 (${key} 삽입 중)`
         });
-        j--;
-      } else {
-        break;
       }
+
+      j--;    // shift 여부와 무관하게 항상 앞으로 이동
     }
 
-    a[j + 1] = key;
+    a[insertPos] = key;
     sorted.add(i);
 
     steps.push({
@@ -241,8 +241,8 @@ function insertionSortSteps(arr) {
       array: copyArr(a),
       comparing: [],
       sorted: [...sorted],
-      newlySorted: j + 1,
-      description: `${key}을(를) ${j + 2}번째 자리에 삽입 완료!`
+      newlySorted: insertPos,
+      description: `${key}을(를) ${insertPos + 1}번째 자리에 삽입 완료!`
     });
   }
 
